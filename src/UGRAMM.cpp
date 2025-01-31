@@ -119,7 +119,7 @@ int findMinVertexModel(DirectedGraph *G, DirectedGraph *H, int y, std::map<int, 
 
   bool compatibilityStatus = true;
 
-  UGRAMM->trace("[Locking] LockGNode {} :: Not Empty {}", (*hConfig)[y].LockGNode, !(*hConfig)[y].LockGNode.empty());
+  UGRAMM->debug("[Locking] LockGNode {} :: Not Empty {}", (*hConfig)[y].LockGNode, !(*hConfig)[y].LockGNode.empty());
   bool lockingNodeStatus = !(*hConfig)[y].LockGNode.empty();
 
   if (lockingNodeStatus){
@@ -152,7 +152,7 @@ int findMinVertexModel(DirectedGraph *G, DirectedGraph *H, int y, std::map<int, 
 
       // Cost and history costs are calculated for the FuncCell:
       totalCosts[GID] += calculate_cost(GID);
-
+      
       //Placement of the signal Y:
       totalCosts[GID] += routeSignal(G, H, y, gConfig, hConfig);
 
@@ -229,6 +229,8 @@ int findMinVertexModel(DirectedGraph *G, DirectedGraph *H, int y, std::map<int, 
         continue;
       }
 
+      // only the vertex type is checked, not the connectivity to the functional primitive/another already mapped vertex
+
       // Skip Fully Locked Nodes
       if (skipFullyLockedNodes){
         if ((*gConfig)[i].gLocked){
@@ -239,14 +241,16 @@ int findMinVertexModel(DirectedGraph *G, DirectedGraph *H, int y, std::map<int, 
 
       //------------------ Routing Setup ---------------------//
       ripUpRouting(y, G);         //Ripup the previous routing
+      UGRAMM->debug("[RIP] Routing ripped for y {}, will update with gnode i {}", hNames[y], gNames[i]);
       (*Users)[i].push_back(y);   //Users update                 
       invUsers[y] = i;            //InvUsers update
       //------------------------------------------------------//
 
       // Cost and history costs are calculated for the FuncCell:
       totalCosts[i] += calculate_cost(i);
-
+      UGRAMM->debug("For application node {} :: location [{}] has VERTEX cost {}", hNames[y], gNames[i], totalCosts[i]);
       //Placement of the signal Y:
+      UGRAMM->debug("[findMinVertexModel] Calling routeSignal for placement of y {}", hNames[y]);
       totalCosts[i] += routeSignal(G, H, y, gConfig, hConfig);
 
       //-------- Debugging statements ------------//
@@ -263,11 +267,13 @@ int findMinVertexModel(DirectedGraph *G, DirectedGraph *H, int y, std::map<int, 
       // now route the signals on the input of y
       //----------------------------------------------
 
+      // here we route the functional primitive when y is one of the OUTPUT prims
       boost::tie(ei, ei_end) = in_edges(yD, *H);
       for (; (ei != ei_end); ei++)
       {
         int driverHNode = source(*ei, *H);
 
+        UGRAMM->debug("driverHNode is {}", hNames[driverHNode]);
         if (invUsers[driverHNode] == NOT_PLACED)
           continue; // driver is not placed
         
@@ -280,16 +286,19 @@ int findMinVertexModel(DirectedGraph *G, DirectedGraph *H, int y, std::map<int, 
         //------------------------------------------------------//
 
         // Newfeature: rip up from load: ripUpLoad(G, driver, outputPin);
+        UGRAMM->debug("[findMinVertexModel] Calling routeSignal for placement of driverHNode {}", hNames[driverHNode]);
         totalCosts[i] += routeSignal(G, H, driverHNode, gConfig, hConfig);
 
         UGRAMM->debug("Routing the signals on the input of {}", hNames[y]);
         UGRAMM->debug("For {} -> {} :: {} -> {} has cost {}", hNames[driverHNode], hNames[y], gNames[driverGNode], gNames[i], totalCosts[i]);
 
         if (totalCosts[i] > bestCost)
+          UGRAMM->debug("ROUTING FOR INPUT SIGNALS INTERRUPTED");
           break;
       }
 
-      UGRAMM->debug("Total cost for {} is {}\n", hNames[y], totalCosts[i]);
+      // if y and all its inputsignals have been mapped to some node with OK cost
+      UGRAMM->debug("Total cost for {} considering i = {} is {}\n", hNames[y], gNames[i], totalCosts[i]);
 
       if (totalCosts[i] >= MAX_DIST)
         continue;
@@ -330,6 +339,7 @@ int findMinVertexModel(DirectedGraph *G, DirectedGraph *H, int y, std::map<int, 
   //------------------------------------------------------//
 
   // Final-placement for node 'y':
+  UGRAMM->debug("[findMinVertexModel] Calling routeSignal for !!!FINAL!!! placement of y {}", hNames[y]);
   routeSignal(G, H, y, gConfig, hConfig);
 
   // Final routing all of the inputs of the node 'y':
@@ -349,6 +359,7 @@ int findMinVertexModel(DirectedGraph *G, DirectedGraph *H, int y, std::map<int, 
     invUsers[driverHNode] = driverGNode;          //InvUsers update
     //------------------------------------------------------//
 
+    UGRAMM->debug("[findMinVertexModel] Calling routeSignal for !!!FINAL!!! placement of driverHNode {}", hNames[driverHNode]);
     routeSignal(G, H, driverHNode, gConfig, hConfig);
   }
 
@@ -389,9 +400,9 @@ int findMinorEmbedding(DirectedGraph *H, DirectedGraph *G, std::map<int, NodeCon
     
     // Sorting the nodes of H according to the size (number of vertices) of their vertex model
     sortList(ordering, num_vertices(*H), hConfig);
-    if (UGRAMM->level() <= spdlog::level::trace){
+    if (UGRAMM->level() <= spdlog::level::debug){
       for (int i = 0; i < num_vertices(*H); i++){
-        UGRAMM->trace("Afer sortlist (sort) Interation {} | Ordering[{}]: {} | hNames[{}]: {}", iterCount, i, ordering[i], ordering[i], hNames[ordering[i]]);
+        UGRAMM->debug("Afer sortlist (sort) Interation {} | Ordering[{}]: {} | hNames[{}]: {}", iterCount, i, ordering[i], ordering[i], hNames[ordering[i]]);
       }
     }
 
@@ -625,6 +636,16 @@ int main(int argc, char **argv)
   //------------------------------------------------------------
 
   int success = findMinorEmbedding(&H, &G, &hConfig, &gConfig);
+
+  for (int i = 0; i < num_vertices(G); i++)
+  {
+    if (gNames[i].find("CNTRLMERGEN2") != std::string::npos) {
+      UGRAMM->debug("(USER CHECK) node {} has users", gNames[i]);
+      for (int n : (*Users)[i]) {
+        UGRAMM->debug("(USER CHECK) node {}", gNames[n]);
+      }
+    }
+  }
 
   if (success)
   {

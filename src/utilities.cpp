@@ -410,12 +410,19 @@ void mandatoryFunCellConnections(int gNumber, std::string FunCellName, DirectedG
   //--------------------------
   out_edge_iterator eo, eo_end;
   boost::tie(eo, eo_end) = out_edges(yD, *G);
-  int selectedCellOutputPin = target(*eo, *G);
+  for (; eo != eo_end; eo++)
+  { 
+    int selectedCellOutputPin = target(*eo, *G);
 
-  if (((*Users)[selectedCellOutputPin].size() >= 1))
-  {
-    positionedOutputFile << FunCellName + "_" + funCellMapping[gNames[gNumber]] << " -> " << gNames_deliemter_changes(gNames[selectedCellOutputPin]) << "\n";
-    unpositionedOutputFile << FunCellName + "_" + funCellMapping[gNames[gNumber]] << " -> " << gNames_deliemter_changes(gNames[selectedCellOutputPin]) << "\n";
+    // this function also assumes there's only 1 output pin. added the forloop to account for multiple outputpins for one prim
+    UGRAMM->debug("funcell {} has outputpin {}", gNames[gNumber], gNames[selectedCellOutputPin]);
+
+    //if (((*Users)[selectedCellOutputPin].size() >= 1))
+    //{
+      positionedOutputFile << FunCellName + "_" + funCellMapping[gNames[gNumber]] << " -> " << gNames_deliemter_changes(gNames[selectedCellOutputPin]) << "\n";
+      unpositionedOutputFile << FunCellName + "_" + funCellMapping[gNames[gNumber]] << " -> " << gNames_deliemter_changes(gNames[selectedCellOutputPin]) << "\n";
+      UGRAMM->debug("writing edge {}_{} -> {} to dotfile", FunCellName, funCellMapping[gNames[gNumber]],  gNames_deliemter_changes(gNames[selectedCellOutputPin]));
+    //}
   }
 
   //--------------------------
@@ -430,6 +437,7 @@ void mandatoryFunCellConnections(int gNumber, std::string FunCellName, DirectedG
     {
       positionedOutputFile << gNames_deliemter_changes(gNames[source_id]) << " -> " << FunCellName + "_" + funCellMapping[gNames[gNumber]] << "\n";
       unpositionedOutputFile << gNames_deliemter_changes(gNames[source_id]) << " -> " << FunCellName + "_" + funCellMapping[gNames[gNumber]] << "\n";
+      //UGRAMM->debug("writing edge {} -> {}_{} to dotfile", gNames_deliemter_changes(gNames[selectedCellOutputPin]), FunCellName, funCellMapping[gNames[gNumber]]);
     }
   }
 }
@@ -449,7 +457,7 @@ void printPlacementResults(int gNumber, std::string gName, DirectedGraph *G, std
   if (!boost::get(&DotVertex::G_VisualY, *G, gNumber).empty()){
     G_VisualY = std::stof(boost::get(&DotVertex::G_VisualY, *G, gNumber)) * VISUAL_SCALE;
   }
-
+  //UGRAMM->debug("(printPlacementResults) visual stuff ok {}", gName);
   // Use for deciding the color of the FunCell based on the opcode
   // int opcode_gNumber = (*gConfig)[gNumber].opcode;
   int opcode_gNumber = 0;
@@ -460,12 +468,21 @@ void printPlacementResults(int gNumber, std::string gName, DirectedGraph *G, std
     else
       opcode_gNumber++;
   }
+  // fix index being too high
+  if (opcode_gNumber >= colors.size()) {
+    opcode_gNumber = 0;
+  }
   std::string modified_name = gNames_deliemter_changes(gName); // Modified combined string
+
+  //UGRAMM->debug("(printPlacementResults) gname {} yields color index {} while color vector size is {}", gName, opcode_gNumber, colors.size());
 
   if ((*gConfig)[gNumber].Cell == "FUNCCELL")
   {
+    //UGRAMM->debug("(printPlacementResults) gconfig cell ok {}", gName);
     if (((*Users)[gNumber].size() >= 1))
     {
+      //UGRAMM->debug("(printPlacementResults) what causes segfault for {} : graphical? {}", gName, colors[opcode_gNumber]);
+
       positionedOutputFile << modified_name + "_" + funCellMapping[gName] << " [shape=\"rectangle\" width=0.5 fontsize=12 fillcolor=\"" << colors[opcode_gNumber] << "\" pos=\"" << G_VisualX << "," << G_VisualY << "!\"]\n";
       unpositionedOutputFile << modified_name + "_" + funCellMapping[gName] << " [shape=\"rectangle\" width=0.5 fontsize=12 fillcolor=\"" << colors[opcode_gNumber] << "\"]\n";
       // If FuncCell is used, then we have to do mandatary connections of FunCell to the input and output pins that are used.
@@ -478,8 +495,13 @@ void printPlacementResults(int gNumber, std::string gName, DirectedGraph *G, std
   }
   else if ((*gConfig)[gNumber].Cell == "PINCELL")
   {
+
+    //debug
+    // UGRAMM->debug("pin {} has {} users", gName, (*Users)[gNumber].size());
+
     if (((*Users)[gNumber].size() >= 1))
     {
+      //UGRAMM->debug("writing pin {}", gNames[gNumber]);
       if ((*gConfig)[gNumber].Type == "IN")
       {
         positionedOutputFile << modified_name << " [shape=\"oval\" width=0.1 fontsize=10 fillcolor=\"" << input_pin_color << "\" pos=\"" << G_VisualX << "," << G_VisualY << "!\"]\n";
@@ -516,8 +538,9 @@ void printMappedResults(DirectedGraph *H, DirectedGraph *G, std::map<int, NodeCo
 
   // Printing the start of the dot file:
   positionedOutputFile << "digraph {\ngraph [bgcolor=lightgray];\n node [style=filled, fontname=\"times-bold\", penwidth=2];\n edge [penwidth=4]; \n splines=ortho;\n";
+  //UGRAMM->debug("(printMappedResults) pos digraph OK");
   unpositionedOutputFile << "digraph {\ngraph [bgcolor=lightgray];\n node [style=filled, fontname=\"times-bold\", penwidth=2];\n edge [penwidth=4]; \n splines=true; rankdir=TB;\n";
-
+  //UGRAMM->debug("(printMappedResults) UNpos digraph OK");
   //---------------------------------------------------
   // Adding nodes of kernel into simplified_file_output:
   //---------------------------------------------------
@@ -528,6 +551,7 @@ void printMappedResults(DirectedGraph *H, DirectedGraph *G, std::map<int, NodeCo
       continue;
     unpositionedOutputFile << hNames[i] << ";\n";
   }
+  //UGRAMM->debug("(printMappedResults) UNpos cluster1 vertices OK");
 
   std::pair<edge_iterator, edge_iterator> edge_pair = edges(*H);
   for (edge_iterator e_it = edge_pair.first; e_it != edge_pair.second; ++e_it)
@@ -545,16 +569,19 @@ void printMappedResults(DirectedGraph *H, DirectedGraph *G, std::map<int, NodeCo
 
   unpositionedOutputFile << "subgraph cluster_0 {\n label = \"UGRAMM mapping output\"; fontsize = 40; style=dashed;\n";
 
+  //UGRAMM->debug("(printMappedResults) UNpos cluster1 EDGES OK");
+
   //------------------------
   // Draw/Print placement:
   //------------------------
   for (auto hElement : gNames)
   {
     int gNumber = hElement.first;
-
+    //UGRAMM->debug("printing placement of cell {}", hElement.second);
     if ((FunCell_Visual_Enable & ((*gConfig)[gNumber].Cell == "FUNCCELL")) || (PinCell_Visual_Enable & ((*gConfig)[gNumber].Cell == "PINCELL")) || (RouteCell_Visual_Enable & ((*gConfig)[gNumber].Cell == "ROUTECELL")))
     {
       std::string gName = hElement.second;
+      //UGRAMM->debug("ACTUALLY printing placement of cell {}", hElement.second);
       printPlacementResults(gNumber, gName, G, positionedOutputFile, unpositionedOutputFile, gConfig, UgrammPragmaConfig);
     }
   }
@@ -572,6 +599,7 @@ void printMappedResults(DirectedGraph *H, DirectedGraph *G, std::map<int, NodeCo
   positionedOutputFile << "}\n";   // End of digraph
   unpositionedOutputFile << "}\n"; // End of second cluster
   unpositionedOutputFile << "}\n"; // End of digraph
+
 }
 
 /**
@@ -595,13 +623,14 @@ void printVertexModels(DirectedGraph *H, DirectedGraph *G, std::map<int, NodeCon
 
     struct RoutingTree *RT = &((*Trees)[i]);
 
-    UGRAMM->info("** routing for {} | ({})'s output pin :: ",  hNames[i], gNames[invUsers[i]]);
+    UGRAMM->info(" {} | ({})'s output pin :: ",  hNames[i], gNames[invUsers[i]]);
     std::list<int>::iterator it = RT->nodes.begin();
 
     //Checking for the elements with zero vertex model size (for the nodes without any fanout)
     if(RT->nodes.size() == 0)
     {
       UGRAMM->info("\t Empty vertex model (no-fanouts for the node)");
+      //UGRAMM->debug("(printVertexModels) cell {} and maps to it {}", gNames[invUsers[i]], hNames[i]);
       funCellMapping[gNames[invUsers[i]]] = hNames[i];
     }
    
@@ -618,7 +647,7 @@ void printVertexModels(DirectedGraph *H, DirectedGraph *G, std::map<int, NodeCon
 
         // For concatinating the mapped applicationNodeID name in device model cell
         funCellMapping[gNames[FunCellLoc]] = hNames[i];
-
+        //UGRAMM->debug("(printVertexModels) outputpin {} finds cell {} and maps to it {}", gNames[*it], gNames[FunCellLoc], hNames[i]);
       }
 
       it++;

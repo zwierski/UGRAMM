@@ -303,10 +303,35 @@ struct CustomComparator {
 */ 
 void sortList(int list[], int n, std::map<int, NodeConfig> *hConfig)
 {
+  /*
   if (!sortAlgorithm)
     qsort(list, n, sizeof(int), cmpfunc);
    else
     std::sort(list, list+n, CustomComparator(hConfig));
+  */
+
+  std::vector<int> funcs;
+  std::vector<int> ios;
+
+  int count = 0;
+  for (int i = 0 ; i < n ; i++) { // n?
+    NodeConfig m = (*hConfig)[i];
+    if (m.Opcode.find("INPUT") != std::string::npos || m.Opcode.find("OUTPUT") != std::string::npos) {
+      ios.push_back(i);
+      count++;
+    } else if (m.Opcode != "") {
+      funcs.push_back(i);
+      count++;
+    }
+  }
+
+  funcs.insert(funcs.end(), ios.begin(), ios.end());
+  
+  for (int i = 0 ; i < count ; i++) {
+    list[i] = funcs.at(i);
+    //printf("list %d \n", list[i]);
+  }
+  
 }
 
 //-------------------------------------------------------------------//
@@ -375,6 +400,7 @@ void depositRoute(int signal, std::list<int> *nodes)
 {
   if (!nodes->size())
   {
+    UGRAMM->debug("NOTHING TO DEPOSIT");
     std::cout << "NOTHING TO DEPOSIT\n";
     return;
   }
@@ -386,7 +412,7 @@ void depositRoute(int signal, std::list<int> *nodes)
   for (; it != (*nodes).rend(); it++)
   {
     int addNode = *it;
-
+    //UGRAMM->debug("(depositRoute) addnode {} prev {} signal {}", gNames[addNode], gNames[prev], hNames[signal]);
     (*Users)[addNode].push_back(signal);
     RT->children[prev].push_back(addNode);
     RT->parent[addNode] = prev;
@@ -483,18 +509,18 @@ int route(DirectedGraph *G, int signal, std::set<int> sink, std::list<int> *rout
     eNode.cost = 0;
     eNode.i = rNode;
 
-    UGRAMM->trace("(route) EXPANSION SOURCE : {}", gNames[rNode]);
+    UGRAMM->debug("(route) EXPANSION SOURCE : {}", gNames[rNode]);
 
     explored.set(rNode);
     expInt.push_back(rNode);
     PRQ.push(eNode);
   }
 
-  if (UGRAMM->level() <= spdlog::level::trace)
+  if (UGRAMM->level() <= spdlog::level::debug)
   {
       for (const auto& item : sink) 
       {
-          UGRAMM->trace("(route) EXPANSION TARGET : {}", gNames[item]); 
+          UGRAMM->debug("(route) EXPANSION TARGET : {}", gNames[item]); 
       }
   }
 
@@ -613,6 +639,8 @@ int routeSignal(DirectedGraph *G, DirectedGraph *H, int y, std::map<int, NodeCon
   { 
     int load = target(*eo, *H);
 
+    UGRAMM->debug("(routeSignal) vertex {} and load {}", hNames[y], hNames[load]);
+
     //---------------------------------------------------------------//
     //------------------------- safety checks -----------------------//
     //---------------------------------------------------------------//
@@ -624,8 +652,34 @@ int routeSignal(DirectedGraph *G, DirectedGraph *H, int y, std::map<int, NodeCon
       continue; // JANDERS ignore feedback connections for the moment
 
     //UserCheck for load:
-    if(invUsers[load] == NOT_PLACED)
+
+    out_edge_iterator eoL, eoL_end;
+    boost::tie(eoL, eoL_end) = out_edges(vertex(load, *H), *H);
+    bool hasBeenDep = false;
+    if (eoL == eoL_end && invUsers[load] != NOT_PLACED) {
+      struct RoutingTree *RT = &((*Trees)[y]);
+      std::string mappedLoad = gNames[invUsers[load]];
+      for (int n : RT->nodes) {
+        UGRAMM->debug("!!! gnames[n] {} and mappedLoad {}", gNames[n], mappedLoad);
+        if (gNames[n].find(mappedLoad) != std::string::npos) {
+          hasBeenDep = true;
+        }
+      }
+      /*if (hasBeenDep) {}
+        UGRAMM->debug("load {} is an output and is placed to {}", hNames[load], gNames[invUsers[load]]);
+        continue;
+      }*/
+    }
+
+
+    // let's check the routing trees of load
+    struct RoutingTree *RTL = &((*Trees)[load]);
+    UGRAMM->debug("Size of routing tree nodes for load {} :: {}", hNames[load], RTL->nodes.size());
+
+    if(invUsers[load] == NOT_PLACED) {
+      UGRAMM->debug("(routeSignal) {} is NOT PLACED YET!", hNames[load]);
       continue; // load should be placed for the routing purpose!!
+    }
 
     //UserCheck for driver:
     if(invUsers[y] == NOT_PLACED)
@@ -652,6 +706,7 @@ int routeSignal(DirectedGraph *G, DirectedGraph *H, int y, std::map<int, NodeCon
     for (; eoY != eoY_end; eoY++)
     {
       int outPinID = target(*eoY, *G);
+      //UGRAMM->debug(" driverPinName : {} :: pinName : {}", driverPinName, (*gConfig)[outPinID].pinName );
       if ((*gConfig)[outPinID].pinName == driverPinName)
       { 
         //Width-check:
@@ -713,7 +768,7 @@ int routeSignal(DirectedGraph *G, DirectedGraph *H, int y, std::map<int, NodeCon
     {
       int inPinId = source(*eiL, *G);
       auto it = loadPinSet.find((*gConfig)[inPinId].pinName);
-      //OB: UGRAMM->debug(" loadPinList : {} :: pinName : {}", loadPinList, (*gConfig)[inPinId].pinName );
+      //UGRAMM->debug(" loadPinList : {} :: pinName : {}", loadPinList, (*gConfig)[inPinId].pinName );
       if ( it != loadPinSet.end())
       { 
         //Width-check:
@@ -753,15 +808,29 @@ int routeSignal(DirectedGraph *G, DirectedGraph *H, int y, std::map<int, NodeCon
     int cost;
     std::list<int> path;
 
+    UGRAMM->debug("(routeSignal) totalCost before route is {}", totalCost);
+
+    struct RoutingTree *RT = &((*Trees)[y]);
+    for (auto x: RT->nodes) {
+      UGRAMM->debug("(routeSignal) Node {} in routing tree", gNames[x]);
+    }
+
     cost = route(G, y, loadIDList, &path, gConfig, hConfig);
 
     totalCost += cost;
-
+    UGRAMM->debug("(routeSignal) totalCost AFTER route is {}", totalCost);
+    /*UGRAMM->debug("(routeSignal) path after route is ");
+    for (auto x: path) {
+      UGRAMM->debug("Node {}", x);
+    }
+    */
     if (cost < MAX_DIST)
     {
+      UGRAMM->debug("(routeSignal) depositRoute is called!");
       // Earlier in Func to Func Mapping, we used to remove the driver Function:
       // path.remove(loadPinCellLoc);
       depositRoute(y, &path);
+      break; // maybe this prevents rerouting of outputs???
     }
     else
     {
