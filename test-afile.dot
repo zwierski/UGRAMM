@@ -1,0 +1,27 @@
+/*
+{
+  "CNTRLMERGEN2": ["CNTRLMERGEN2"],
+  "INPUTW0": ["INPUTW0"],
+  "INPUTW1": ["INPUTW1"],
+  "INPUTW32": ["INPUTW32"],
+  "OUTPUTW0": ["OUTPUTW0"],
+  "OUTPUTW1": ["OUTPUTW1"],
+  "OUTPUTW32": ["OUTPUTW32"]
+}
+*/
+strict digraph "gnode_25" {
+ //Node information:
+CONTROL_MERGE0 [label="CONTROL_MERGE0", opcode=CNTRLMERGEN2, width="1"];
+Output1 [label="Output1", opcode=OUTPUTW0, width="1"];
+Output2 [label="Output2", opcode=OUTPUTW1, width="1"];
+Output3 [label="Output3", opcode=OUTPUTW0, width="1"];
+Input1 [label="Input1", opcode=INPUTW0, width="1"];
+Input2 [label="Input2", opcode=INPUTW0, width="1"];
+
+//Edge information:
+Input2 -> CONTROL_MERGE0 [driver="OutPMData0Reg_0", load="HsInPMData0Reg_1"];
+Input1 -> CONTROL_MERGE0 [driver="OutPMData0Reg_0", load="HsInPMData0Reg_0"];
+CONTROL_MERGE0 -> Output3 [driver="HsOutPMCond1Reg_0", load="InPMData0Reg_0"];
+CONTROL_MERGE0 -> Output2 [driver="DOutPMCond1Reg_0", load="InPMData1Reg_0"];
+CONTROL_MERGE0 -> Output1 [driver="HsOutPMData0Reg_0", load="InPMData0Reg_0"];
+}
